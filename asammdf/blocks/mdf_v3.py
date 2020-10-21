@@ -213,7 +213,7 @@ class MDF3(object):
             self.identification = FileIdentificationBlock(version=version)
             self.version = version
             self.header = HeaderBlock(version=self.version)
-            self.name = Path("new.mdf")
+            self.name = Path("__new__.mdf")
 
         self._sort()
 
@@ -227,6 +227,8 @@ class MDF3(object):
             virtual_channel_group.groups.append(index)
             virtual_channel_group.record_size = grp.channel_group.samples_byte_nr
             virtual_channel_group.cycles_nr = grp.channel_group.cycles_nr
+
+        self._parent = None
 
     def __del__(self):
         self.close()
@@ -2262,6 +2264,7 @@ class MDF3(object):
 
         """
 
+        self._parent = None
         if self._tempfile is not None:
             self._tempfile.close()
         if self._file is not None and not self._from_filelike:
@@ -3168,7 +3171,9 @@ class MDF3(object):
                 if time_ch.data_type in v23c.INT_TYPES:
 
                     dtype_fmt = get_fmt_v3(
-                        time_ch.data_type, time_ch.bit_count, self.identification.byte_order
+                        time_ch.data_type,
+                        time_ch.bit_count,
+                        self.identification.byte_order,
                     )
                     channel_dtype = dtype(dtype_fmt.split(")")[-1])
 
@@ -3551,6 +3556,9 @@ class MDF3(object):
 
         if self._callback:
             self._callback(100, 100)
+
+        if self.name == Path("__new__.mdf"):
+            self.name = dst
 
         return dst
 

@@ -13,6 +13,8 @@ class TreeWidget(QtWidgets.QTreeWidget):
         self.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.setUniformRowHeights(True)
 
+        self.mode = "Natural sort"
+
     def keyPressEvent(self, event):
         key = event.key()
         if key == QtCore.Qt.Key_Space:
@@ -39,7 +41,6 @@ class TreeWidget(QtWidgets.QTreeWidget):
             super().keyPressEvent(event)
 
     def mouseMoveEvent(self, e):
-
         def get_data(item):
             data = set()
             count = item.childCount()
@@ -90,7 +91,7 @@ class TreeWidget(QtWidgets.QTreeWidget):
 
         data = [
             pack(
-                f"<36s3q{name_length}s",
+                f"<12s3q{name_length}s",
                 uuid,
                 group_index,
                 channel_index,

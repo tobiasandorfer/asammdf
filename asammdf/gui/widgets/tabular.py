@@ -26,6 +26,7 @@ class Tabular(Ui_TabularDisplay, QtWidgets.QWidget):
 
         self.signals_descr = {}
         self.start = start
+        self.pattern = {}
 
         if signals is None:
             self.signals = pd.DataFrame()
@@ -358,13 +359,14 @@ class Tabular(Ui_TabularDisplay, QtWidgets.QWidget):
 
         config = {
             "sorted": self.sort.checkState() == QtCore.Qt.Checked,
-            "channels": list(self.signals.columns),
+            "channels": list(self.signals.columns) if not self.pattern else [],
             "filtered": bool(self.query.toPlainText()),
             "filters": [
                 self.filters.itemWidget(self.filters.item(i)).to_config()
                 for i in range(count)
-            ],
+            ] if not self.pattern else [],
             "time_as_date": self.time_as_date.checkState() == QtCore.Qt.Checked,
+            "pattern": self.pattern,
         }
 
         return config
@@ -385,9 +387,12 @@ class Tabular(Ui_TabularDisplay, QtWidgets.QWidget):
             for i in range(count):
                 filter = self.filters.itemWidget(self.filters.item(i))
                 filter.dtype_kind[0] = "M"
-                filter._target = None
+
                 if filter.column.currentIndex() == 0:
                     filter.column_changed(0)
+                else:
+                    filter.validate_target()
+
             index = pd.to_datetime(self.signals.index + self.start, unit="s")
 
             self.signals.index = index
@@ -395,9 +400,11 @@ class Tabular(Ui_TabularDisplay, QtWidgets.QWidget):
             for i in range(count):
                 filter = self.filters.itemWidget(self.filters.item(i))
                 filter.dtype_kind[0] = "f"
-                filter._target = None
+
                 if filter.column.currentIndex() == 0:
                     filter.column_changed(0)
+                else:
+                    filter.validate_target()
             self.signals.index = self._original_index
         self.signals.index.name = "timestamps"
 

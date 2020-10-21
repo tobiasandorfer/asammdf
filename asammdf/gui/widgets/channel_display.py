@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
+import os
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -126,7 +127,7 @@ class ChannelDisplay(Ui_ChannelDiplay, QtWidgets.QWidget):
         self._value = value
         if self.ranges and value not in ("", "n.a."):
             for (start, stop), color in self.ranges.items():
-                if start <= value < stop:
+                if start <= value <= stop:
                     self.setStyleSheet(f"background-color: {color};")
                     break
             else:
@@ -245,7 +246,9 @@ class ChannelDisplay(Ui_ChannelDiplay, QtWidgets.QWidget):
 
     def does_not_exist(self):
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap(":/error.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon.addPixmap(
+            QtGui.QPixmap(":/error.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off
+        )
         self.color_btn.setIcon(icon)
         self.color_btn.setFlat(True)
         self.color_btn.clicked.disconnect()

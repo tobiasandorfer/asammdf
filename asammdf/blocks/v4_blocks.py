@@ -10,9 +10,9 @@ from pathlib import Path
 from struct import pack, unpack, unpack_from
 from textwrap import wrap
 import time
+from traceback import format_exc
 import xml.etree.ElementTree as ET
 from zlib import compress, decompress
-from traceback import format_exc
 
 from numexpr import evaluate
 import numpy as np
@@ -469,7 +469,7 @@ class Channel:
             self.address = address = kwargs["address"]
             self.dtype_fmt = self.attachment = None
             stream = kwargs["stream"]
-            mapped = kwargs.get("mapped", False) or not is_file_like(stream)
+            mapped = kwargs["mapped"]
 
             if mapped:
 
@@ -579,7 +579,7 @@ class Channel:
                     ) = params
 
                 self.name = get_text_v4(self.name_addr, stream, mapped=mapped)
-                tx_map = kwargs.get("tx_map", {})
+                tx_map = kwargs["tx_map"]
                 addr = self.unit_addr
                 if addr in tx_map:
                     self.unit = tx_map[addr]
@@ -588,7 +588,7 @@ class Channel:
                     tx_map[addr] = self.unit
                 self.comment = get_text_v4(self.comment_addr, stream, mapped=mapped)
 
-                if kwargs.get("use_display_names", True):
+                if kwargs["use_display_names"]:
                     try:
                         display_name = ET.fromstring(sanitize_xml(self.comment)).find(
                             ".//names/display"
@@ -602,11 +602,9 @@ class Channel:
                 else:
                     self.display_name = ""
 
-                si_map = kwargs.get("si_map", {})
-                cc_map = kwargs.get("cc_map", {})
-
                 address = self.conversion_addr
                 if address:
+                    cc_map = kwargs["cc_map"]
                     try:
                         if mapped:
                             (size,) = UINT64_uf(stream, address + 8)
@@ -640,6 +638,7 @@ class Channel:
 
                 address = self.source_addr
                 if address:
+                    si_map = kwargs["si_map"]
                     try:
                         if mapped:
                             raw_bytes = stream[address : address + v4c.SI_BLOCK_SIZE]
@@ -661,7 +660,7 @@ class Channel:
                         logger.warning(
                             f"Channel source parsing error: {format_exc()}. The error is ignored and the channel source is None"
                         )
-                        conv = None
+                        source = None
 
                     self.source = source
                 else:
@@ -777,7 +776,7 @@ class Channel:
                     ) = params
 
                 self.name = get_text_v4(self.name_addr, stream)
-                tx_map = kwargs.get("tx_map", {})
+                tx_map = kwargs["tx_map"]
                 addr = self.unit_addr
                 if addr in tx_map:
                     self.unit = tx_map[addr]
@@ -786,7 +785,7 @@ class Channel:
                     tx_map[addr] = self.unit
                 self.comment = get_text_v4(self.comment_addr, stream)
 
-                if kwargs.get("use_display_names", True):
+                if kwargs["use_display_names"]:
                     try:
                         display_name = ET.fromstring(sanitize_xml(self.comment)).find(
                             ".//names/display"
@@ -800,8 +799,8 @@ class Channel:
                 else:
                     self.display_name = ""
 
-                si_map = kwargs.get("si_map", {})
-                cc_map = kwargs.get("cc_map", {})
+                si_map = kwargs["si_map"]
+                cc_map = kwargs["cc_map"]
 
                 address = self.conversion_addr
                 if address:
@@ -819,6 +818,7 @@ class Channel:
                                 stream=stream,
                                 address=address,
                                 tx_map=tx_map,
+                                mapped=mapped,
                             )
                             cc_map[raw_bytes] = conv
                     except:
@@ -844,13 +844,14 @@ class Channel:
                                 stream=stream,
                                 address=address,
                                 tx_map=tx_map,
+                                mapped=mapped,
                             )
                             si_map[raw_bytes] = source
                     except:
                         logger.warning(
                             f"Channel source parsing error: {format_exc()}. The error is ignored and the channel source is None"
                         )
-                        conv = None
+                        source = None
 
                     self.source = source
                 else:
@@ -950,7 +951,7 @@ class Channel:
                     try:
                         CNcomment = ET.fromstring(comment)
                         display_name_element = CNcomment.find(".//names/display")
-                        if display_name is not None:
+                        if display_name_element is not None:
                             display_name_element.text = display_name or ""
                         else:
 
@@ -1804,7 +1805,7 @@ class ChannelGroup:
             self.acq_name = get_text_v4(self.acq_name_addr, stream, mapped=mapped)
             self.comment = get_text_v4(self.comment_addr, stream, mapped=mapped)
 
-            si_map = kwargs.get("si_map", {})
+            si_map = kwargs["si_map"]
 
             address = self.acq_source_addr
             if address:
@@ -1821,6 +1822,7 @@ class ChannelGroup:
                         stream=stream,
                         address=address,
                         mapped=mapped,
+                        tx_map=kwargs["tx_map"],
                     )
                     si_map[raw_bytes] = source
                 self.acq_source = source
@@ -2162,10 +2164,10 @@ class ChannelConversion(_ChannelConversionBase):
 
         if "stream" in kwargs:
             stream = kwargs["stream"]
-            mapped = kwargs.get("mapped", False) or not is_file_like(stream)
+            mapped = kwargs["mapped"]
 
             try:
-                self.address = address = kwargs.get("address", 0)
+                self.address = address = kwargs["address"]
                 block = kwargs["raw_bytes"]
                 (self.id, self.reserved0, self.block_len, self.links_nr) = COMMON_uf(
                     block
@@ -2469,7 +2471,7 @@ class ChannelConversion(_ChannelConversionBase):
 
             self.referenced_blocks = None
 
-            tx_map = kwargs.get("tx_map", {})
+            tx_map = kwargs["tx_map"]
 
             addr = self.name_addr
             if addr in tx_map:
@@ -2503,7 +2505,10 @@ class ChannelConversion(_ChannelConversionBase):
 
                 if conv_type in v4c.TABULAR_CONVERSIONS:
                     refs = self.referenced_blocks = {}
-                    if conv_type in (v4c.CONVERSION_TYPE_TTAB, v4c.CONVERSION_TYPE_BITFIELD):
+                    if conv_type in (
+                        v4c.CONVERSION_TYPE_TTAB,
+                        v4c.CONVERSION_TYPE_BITFIELD,
+                    ):
                         tabs = self.links_nr - 4
                     else:
                         tabs = self.links_nr - 4 - 1
@@ -2543,7 +2548,10 @@ class ChannelConversion(_ChannelConversionBase):
 
                         else:
                             refs[f"text_{i}"] = b""
-                    if conv_type not in  (v4c.CONVERSION_TYPE_TTAB, v4c.CONVERSION_TYPE_BITFIELD):
+                    if conv_type not in (
+                        v4c.CONVERSION_TYPE_TTAB,
+                        v4c.CONVERSION_TYPE_BITFIELD,
+                    ):
                         address = self.default_addr
                         if address:
                             if address in tx_map:
@@ -2795,7 +2803,7 @@ class ChannelConversion(_ChannelConversionBase):
                     default = kwargs["default_addr"]
                 else:
                     default = kwargs.get("default", b"")
-                if b"{X}" in default:
+                if isinstance(default, bytes) and b"{X}" in default:
                     default = (
                         default.decode("latin-1").replace("{X}", "X").split('"')[1]
                     )
@@ -2966,11 +2974,13 @@ class ChannelConversion(_ChannelConversionBase):
             a = self.a
             b = self.b
 
-            names = values.dtype.names
-            if names:
-                name = names[0]
-                vals = values[name]
-                if (a, b) != (1, 0):
+            if (a, b) != (1, 0):
+
+                if values.dtype.names:
+                    names = values.dtype.names
+                    name = names[0]
+                    vals = values[name]
+
                     vals = vals * a
                     if b:
                         vals += b
@@ -2983,11 +2993,12 @@ class ChannelConversion(_ChannelConversionBase):
                         ],
                     )
 
-            else:
-                if (a, b) != (1, 0):
+                else:
+
                     values = values * a
                     if b:
                         values += b
+
         elif conversion_type == v4c.CONVERSION_TYPE_RAT:
             P1 = self.P1
             P2 = self.P2
@@ -3105,8 +3116,6 @@ class ChannelConversion(_ChannelConversionBase):
         elif conversion_type == v4c.CONVERSION_TYPE_TABX:
             nr = self.val_param_nr
             raw_vals = [self[f"val_{i}"] for i in range(nr)]
-
-            ret = np.array([None] * len(values), dtype="O")
 
             phys = [self.referenced_blocks[f"text_{i}"] for i in range(nr)]
 
@@ -3314,17 +3323,21 @@ class ChannelConversion(_ChannelConversionBase):
             nr = self.val_param_nr
 
             phys = [self.referenced_blocks[f"text_{i}"] for i in range(nr)]
-            masks = np.array([self[f"mask_{i}"] for i in range(nr)], dtype='u8')
+            masks = np.array([self[f"mask_{i}"] for i in range(nr)], dtype="u8")
 
             phys = [
-                conv if isinstance(conv, bytes) else (
-                    (f'{conv.name}='.encode('utf-8'), conv) if conv.name else (b"", conv)
+                conv
+                if isinstance(conv, bytes)
+                else (
+                    (f"{conv.name}=".encode("utf-8"), conv)
+                    if conv.name
+                    else (b"", conv)
                 )
                 for conv in phys
             ]
 
             new_values = []
-            values = values.astype('u8').tolist()
+            values = values.astype("u8").tolist()
             for val in values:
                 new_val = []
                 masked_values = (masks & val).tolist()
@@ -3765,7 +3778,7 @@ formula: {self.formula}
             result = pack(fmt, *[getattr(self, key) for key in keys])
 
         elif self.conversion_type == v4c.CONVERSION_TYPE_BITFIELD:
-            fmt = "<4sI{}Q2B3H2d{}Q".format(self.links_nr+2, self.val_param_nr)
+            fmt = "<4sI{}Q2B3H2d{}Q".format(self.links_nr + 2, self.val_param_nr)
             keys = (
                 "id",
                 "reserved0",
@@ -5559,15 +5572,15 @@ class ListData(_ListDataBase):
             keys += tuple(f"offset_{i}" for i in range(self.data_block_nr))
 
         if self.flags & v4c.FLAG_LD_TIME_VALUES:
-            fmt += f"8s" * self.data_block_nr
+            fmt += "8s" * self.data_block_nr
             keys += tuple(f"time_value_{i}" for i in range(self.data_block_nr))
 
         if self.flags & v4c.FLAG_LD_ANGLE_VALUES:
-            fmt += f"8s" * self.data_block_nr
+            fmt += "8s" * self.data_block_nr
             keys += tuple(f"angle_value_{i}" for i in range(self.data_block_nr))
 
         if self.flags & v4c.FLAG_LD_DISTANCE_VALUES:
-            fmt += f"8s" * self.data_block_nr
+            fmt += "8s" * self.data_block_nr
             keys += tuple(f"distance_value_{i}" for i in range(self.data_block_nr))
 
         result = pack(fmt, *[getattr(self, key) for key in keys])
@@ -5627,10 +5640,10 @@ class SourceInformation:
         if "stream" in kwargs:
 
             stream = kwargs["stream"]
-            mapped = kwargs.get("mapped", False) or not is_file_like(stream)
+            mapped = kwargs["mapped"]
             try:
                 block = kwargs["raw_bytes"]
-                self.address = kwargs.get("address", 0)
+                self.address = kwargs["address"]
             except KeyError:
                 self.address = address = kwargs["address"]
                 stream.seek(address)
@@ -5656,7 +5669,7 @@ class SourceInformation:
                 logger.exception(message)
                 raise MdfException(message)
 
-            tx_map = kwargs.get("tx_map", {})
+            tx_map = kwargs["tx_map"]
 
             address = self.name_addr
             if address in tx_map:

@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from struct import unpack
 from time import perf_counter
-from uuid import uuid4
 
 import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -26,11 +25,7 @@ from .list_item import ListItem
 
 bin_ = bin
 
-
 HERE = Path(__file__).resolve().parent
-
-
-# pg.setConfigOption("useOpenGL", True)
 
 
 if not hasattr(pg.InfiniteLine, "addMarker"):
@@ -64,8 +59,8 @@ class PlotSignal(Signal):
             encoding=signal.encoding,
         )
 
-        self.uuid = getattr(signal, "uuid", uuid4())
-        self.mdf_uuid = getattr(signal, "mdf_uuid", uuid4())
+        self.uuid = getattr(signal, "uuid", os.urandom(6).hex())
+        self.mdf_uuid = getattr(signal, "mdf_uuid", os.urandom(6).hex())
 
         self.group_index = getattr(signal, "group_index", -1)
         self.channel_index = getattr(signal, "channel_index", -1)
@@ -563,7 +558,6 @@ class PlotSignal(Signal):
         if self.trim_info == trim_info:
             return
 
-
         self.trim_info = trim_info
         sig = self
         dim = len(sig.timestamps)
@@ -700,6 +694,7 @@ class Plot(QtWidgets.QWidget):
         events = kwargs.pop("events", None)
         super().__init__(*args, **kwargs)
         self.setContentsMargins(0, 0, 0, 0)
+        self.pattern = {}
 
         self.info_uuid = None
 
@@ -710,7 +705,7 @@ class Plot(QtWidgets.QWidget):
 
         main_layout = QtWidgets.QVBoxLayout(self)
         main_layout.setSpacing(1)
-        main_layout.setContentsMargins(1,1,1,1)
+        main_layout.setContentsMargins(1, 1, 1, 1)
         # self.setLayout(main_layout)
 
         vbox = QtWidgets.QVBoxLayout()
@@ -734,7 +729,9 @@ class Plot(QtWidgets.QWidget):
         self.splitter.addWidget(widget)
         self.splitter.setOpaqueResize(False)
 
-        self.plot = _Plot(with_dots=with_dots, parent=self, events=events, origin=origin)
+        self.plot = _Plot(
+            with_dots=with_dots, parent=self, events=events, origin=origin
+        )
 
         self.plot.range_modified.connect(self.range_modified)
         self.plot.range_removed.connect(self.range_removed)
@@ -1284,7 +1281,7 @@ class Plot(QtWidgets.QWidget):
     def add_new_channels(self, channels):
 
         for sig in channels:
-            sig.uuid = uuid4()
+            sig.uuid = os.urandom(6).hex()
 
         invalid = []
 
@@ -1408,15 +1405,15 @@ class Plot(QtWidgets.QWidget):
 
             view = self.plot.view_boxes[idx]
             channel["view_box"] = [
-                [float(e) for e in axis]
-                for axis in view.viewRange()
+                [float(e) for e in axis] for axis in view.viewRange()
             ]
             channel["mdf_uuid"] = str(sig.mdf_uuid)
 
             channels.append(channel)
 
         config = {
-            "channels": channels,
+            "channels": channels if not self.pattern else [],
+            "pattern": self.pattern,
         }
 
         return config
@@ -1523,7 +1520,6 @@ class _Plot(pg.PlotWidget):
         self.scene_ = self.plot_item.scene()
         self.scene_.sigMouseClicked.connect(self._clicked)
         self.viewbox = self.plot_item.vb
-
 
         self.common_axis_items = set()
         self.common_axis_label = ""
@@ -1703,7 +1699,7 @@ class _Plot(pg.PlotWidget):
                             if curve.opts["pen"].style() != style:
                                 curve.opts["pen"].setStyle(style)
                             curve.update()
-                            curve.sigPlotChanged.emit(curve)
+                #                            curve.sigPlotChanged.emit(curve)
 
                 if sig.enable:
                     curve.show()
@@ -1775,11 +1771,14 @@ class _Plot(pg.PlotWidget):
             self.view_boxes[index].setXLink(None)
             self.axes[index].hide()
 
-            self._timebase_db[id(sig.timestamps)].remove(uuid)
+            try:
+                self._timebase_db[id(sig.timestamps)].remove(uuid)
 
-            if len(self._timebase_db[id(sig.timestamps)]) == 0:
-                del self._timebase_db[id(sig.timestamps)]
-                self._compute_all_timebase()
+                if len(self._timebase_db[id(sig.timestamps)]) == 0:
+                    del self._timebase_db[id(sig.timestamps)]
+                    self._compute_all_timebase()
+            except:
+                pass
 
         if self.cursor1:
             self.cursor_move_finished.emit()
@@ -1837,6 +1836,14 @@ class _Plot(pg.PlotWidget):
                         self.region_lock = self.region.getRegion()[0]
                 else:
                     self.region_lock = None
+
+            elif key == QtCore.Qt.Key_X and modifier == QtCore.Qt.NoModifier:
+                if self.region is not None:
+                    self.viewbox.setXRange(*self.region.getRegion(), padding=0)
+                    event_ = QtGui.QKeyEvent(
+                        QtCore.QEvent.KeyPress, QtCore.Qt.Key_R, QtCore.Qt.NoModifier
+                    )
+                    self.keyPressEvent(event_)
 
             elif key == QtCore.Qt.Key_F and modifier == QtCore.Qt.NoModifier:
                 if self.common_axis_items:
@@ -2278,7 +2285,8 @@ class _Plot(pg.PlotWidget):
         trim_info = start, stop, width
 
         channels = [
-            PlotSignal(sig, i, trim_info=trim_info) for i, sig in enumerate(channels, len(self.signals))
+            PlotSignal(sig, i, trim_info=trim_info)
+            for i, sig in enumerate(channels, len(self.signals))
         ]
 
         for sig in channels:
@@ -2286,10 +2294,7 @@ class _Plot(pg.PlotWidget):
             uuids.add(sig.uuid)
         self.signals.extend(channels)
 
-        self._uuid_map = {
-            sig.uuid: (sig, i)
-            for i, sig in enumerate(self.signals)
-        }
+        self._uuid_map = {sig.uuid: (sig, i) for i, sig in enumerate(self.signals)}
 
         self._compute_all_timebase()
 
@@ -2314,14 +2319,14 @@ class _Plot(pg.PlotWidget):
             view_box.disableAutoRange()
 
             axis.linkToView(view_box)
-#            if len(sig.name) <= 32:
-#                axis.labelText = sig.name
-#            else:
-#                axis.labelText = f"{sig.name[:29]}..."
-#            axis.labelUnits = sig.unit
-#            axis.labelStyle = {"color": color}
-#
-#            axis.setLabel(axis.labelText, sig.unit, color=color)
+            #            if len(sig.name) <= 32:
+            #                axis.labelText = sig.name
+            #            else:
+            #                axis.labelText = f"{sig.name[:29]}..."
+            #            axis.labelUnits = sig.unit
+            #            axis.labelStyle = {"color": color}
+            #
+            #            axis.setLabel(axis.labelText, sig.unit, color=color)
 
             self.layout.addItem(axis, 2, self._axes_layout_pos)
             self._axes_layout_pos += 1
@@ -2352,8 +2357,8 @@ class _Plot(pg.PlotWidget):
                 view_box.setYRange(sig.min, sig.max, padding=0, update=True)
 
             view_box.setGeometry(geometry)
-#            (start, stop), _ = self.viewbox.viewRange()
-#            view_box.setXRange(start, stop, padding=0, update=True)
+            #            (start, stop), _ = self.viewbox.viewRange()
+            #            view_box.setXRange(start, stop, padding=0, update=True)
 
             self.axes.append(axis)
             axis.hide()
@@ -2450,10 +2455,7 @@ class _Plot(pg.PlotWidget):
 
         uuids = [sig.uuid for sig in self.signals]
 
-        self._uuid_map = {
-            sig.uuid: (sig, i)
-            for i, sig in enumerate(self.signals)
-        }
+        self._uuid_map = {sig.uuid: (sig, i) for i, sig in enumerate(self.signals)}
 
         if uuids:
             if self.current_uuid in uuids:
@@ -2510,7 +2512,7 @@ class _Plot(pg.PlotWidget):
         sig = dlg.result
 
         if sig is not None:
-            sig.uuid = uuid4()
-            sig.mdf_uuid = uuid4()
+            sig.uuid = os.urandom(6).hex()
+            sig.mdf_uuid = os.urandom(6).hex()
             self.add_new_channels([sig], computed=True)
             self.computation_channel_inserted.emit()
